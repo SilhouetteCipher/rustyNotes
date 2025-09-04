@@ -12,7 +12,29 @@ cargo fmt                      # Format code
 cargo build                    # Debug build
 cargo build --release          # Optimized release build
 
+# Hot reloading during development
+cargo watch -x run             # Auto-rebuild on file changes
+
 # No unit tests currently - this is a single-binary TUI application
+```
+
+## Project Structure
+```
+src/
+├── main.rs           # Entry point, terminal setup, event loop
+├── app.rs            # Core App struct and state management
+├── app_methods.rs    # All App implementation methods
+├── config.rs         # Configuration loading/saving
+├── constants.rs      # Application constants and ASCII art
+├── file_ops.rs       # File system operations
+├── modes/
+│   ├── mod.rs        # Mode module exports
+│   └── mode_types.rs # Mode enum and string conversion
+└── ui/
+    ├── mod.rs        # UI module exports
+    ├── themes.rs     # ColorScheme enum and theming
+    ├── render.rs     # Main UI rendering (broken into functions)
+    └── components.rs # Reusable UI helper functions
 ```
 
 ## Code Style Guidelines
@@ -46,3 +68,12 @@ cargo build --release          # Optimized release build
 - Implement methods on main struct for state transitions
 - Use `match` expressions for handling different modes/states
 - Keep UI rendering separate from business logic
+- Break large functions into smaller, focused functions
+- Group related functionality into modules
+
+### Module Organization
+- Each module should have a single, clear responsibility
+- Use `mod.rs` files to control public API of modules
+- Keep implementation details private, expose only necessary items
+- Constants should be centralized in `constants.rs`
+- File operations should be in `file_ops.rs` for easy testing
