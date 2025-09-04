@@ -31,6 +31,84 @@ enum Mode {
     Search,
     ConfirmingDelete,
     SelectingMoveDestination,
+    Settings,
+}
+
+#[derive(PartialEq, Clone, Copy, Debug)]
+enum ColorScheme {
+    Green,      // Classic green terminal
+    Blue,       // Blue terminal theme
+    Amber,      // Amber/yellow retro theme
+    Orange,     // Orange retro theme
+    LightGreen, // Lighter green variant
+    Red,        // Red terminal theme
+    BrightRed,  // Bright/vibrant red theme
+}
+
+impl ColorScheme {
+    fn name(&self) -> &str {
+        match self {
+            ColorScheme::Green => "Classic Green",
+            ColorScheme::Blue => "Terminal Blue",
+            ColorScheme::Amber => "Retro Amber",
+            ColorScheme::Orange => "Bright Orange",
+            ColorScheme::LightGreen => "Light Green",
+            ColorScheme::Red => "Alert Red",
+            ColorScheme::BrightRed => "Vibrant Red",
+        }
+    }
+
+    fn primary_color(&self) -> Color {
+        match self {
+            ColorScheme::Green => Color::Green,
+            ColorScheme::Blue => Color::Cyan,
+            ColorScheme::Amber => Color::Yellow,
+            ColorScheme::Orange => Color::Rgb(255, 165, 0), // True orange
+            ColorScheme::LightGreen => Color::LightGreen,
+            ColorScheme::Red => Color::Red,
+            ColorScheme::BrightRed => Color::Rgb(255, 69, 0), // Bright red-orange
+        }
+    }
+
+    fn secondary_color(&self) -> Color {
+        match self {
+            ColorScheme::Green => Color::LightGreen,
+            ColorScheme::Blue => Color::LightBlue,
+            ColorScheme::Amber => Color::LightYellow,
+            ColorScheme::Orange => Color::Rgb(255, 200, 100), // Light orange
+            ColorScheme::LightGreen => Color::Green,
+            ColorScheme::Red => Color::LightRed,
+            ColorScheme::BrightRed => Color::Rgb(255, 100, 100), // Light bright red
+        }
+    }
+
+    fn all_schemes() -> Vec<ColorScheme> {
+        vec![
+            ColorScheme::Green,
+            ColorScheme::Blue,
+            ColorScheme::Amber,
+            ColorScheme::Orange,
+            ColorScheme::LightGreen,
+            ColorScheme::Red,
+            ColorScheme::BrightRed,
+        ]
+    }
+
+    fn from_string(s: &str) -> Self {
+        match s {
+            "Blue" => ColorScheme::Blue,
+            "Amber" => ColorScheme::Amber,
+            "Orange" => ColorScheme::Orange,
+            "LightGreen" => ColorScheme::LightGreen,
+            "Red" => ColorScheme::Red,
+            "BrightRed" => ColorScheme::BrightRed,
+            _ => ColorScheme::Green,
+        }
+    }
+
+    fn to_string(&self) -> String {
+        format!("{:?}", self)
+    }
 }
 
 impl Mode {
@@ -45,6 +123,7 @@ impl Mode {
             Mode::Search => "SEARCH",
             Mode::ConfirmingDelete => "CONFIRM DELETE",
             Mode::SelectingMoveDestination => "SELECT MOVE DEST",
+            Mode::Settings => "SETTINGS",
         }
     }
 }
@@ -70,6 +149,8 @@ struct App<'a> {
     operation_target_file: Option<PathBuf>,
     move_destinations: Vec<String>,
     move_selection_state: ListState,
+    color_scheme: ColorScheme,
+    settings_selection_state: ListState,
 }
 
 impl<'a> App<'a> {
@@ -100,6 +181,8 @@ impl<'a> App<'a> {
                 "Printed".to_string(),
             ],
             move_selection_state: ListState::default(),
+            color_scheme: ColorScheme::Green,
+            settings_selection_state: ListState::default(),
         };
         app.load_config();
         app.load_files();
@@ -125,6 +208,9 @@ impl<'a> App<'a> {
                         self.template_root = Some(path);
                     }
                 }
+                if let Some(color_str) = config.get("color_scheme") {
+                    self.color_scheme = ColorScheme::from_string(color_str.trim());
+                }
             }
         }
     }
@@ -135,6 +221,7 @@ impl<'a> App<'a> {
             if let Some(tmpl_root) = &self.template_root {
                 content.push_str(&format!("template_root={}\n", tmpl_root.to_string_lossy()));
             }
+            content.push_str(&format!("color_scheme={}\n", self.color_scheme.to_string()));
             fs::write(path, content).ok();
         }
     }
@@ -529,6 +616,55 @@ impl<'a> App<'a> {
         }
         self.mode = Mode::Normal;
     }
+
+    fn enter_settings(&mut self) {
+        self.settings_selection_state.select(Some(0));
+        self.mode = Mode::Settings;
+    }
+
+    fn exit_settings(&mut self) {
+        self.mode = Mode::Normal;
+    }
+
+    fn settings_next(&mut self) {
+        let schemes = ColorScheme::all_schemes();
+        let i = match self.settings_selection_state.selected() {
+            Some(i) => {
+                if i >= schemes.len() - 1 {
+                    0
+                } else {
+                    i + 1
+                }
+            }
+            None => 0,
+        };
+        self.settings_selection_state.select(Some(i));
+    }
+
+    fn settings_previous(&mut self) {
+        let schemes = ColorScheme::all_schemes();
+        let i = match self.settings_selection_state.selected() {
+            Some(i) => {
+                if i == 0 {
+                    schemes.len() - 1
+                } else {
+                    i - 1
+                }
+            }
+            None => 0,
+        };
+        self.settings_selection_state.select(Some(i));
+    }
+
+    fn apply_color_scheme(&mut self) {
+        if let Some(index) = self.settings_selection_state.selected() {
+            let schemes = ColorScheme::all_schemes();
+            if let Some(scheme) = schemes.get(index) {
+                self.color_scheme = *scheme;
+                self.save_config();
+            }
+        }
+    }
 }
 
 fn main() -> Result<()> {
@@ -583,6 +719,7 @@ fn run<'a>(
                     KeyCode::Char('c') => app.enter_directory_browser(false), // Changed 'd' to 'c' for change directory
                     KeyCode::Char('T') => app.start_template_workflow(),
                     KeyCode::Char('/') => app.enter_search_mode(),
+                    KeyCode::Char('s') => app.enter_settings(),
                     KeyCode::Char('d') => app.start_delete_confirmation(),
                     KeyCode::Char('m') => app.start_move_selection(),
                     KeyCode::Down => app.select_next(),
@@ -667,6 +804,16 @@ fn run<'a>(
                     KeyCode::Up => app.move_selection_previous(),
                     _ => {} // Ignore other keys
                 },
+                Mode::Settings => match key.code {
+                    KeyCode::Esc => app.exit_settings(),
+                    KeyCode::Enter => {
+                        app.apply_color_scheme();
+                        app.exit_settings();
+                    }
+                    KeyCode::Down => app.settings_next(),
+                    KeyCode::Up => app.settings_previous(),
+                    _ => {} // Ignore other keys
+                },
             }
         }
     }
@@ -701,13 +848,13 @@ d8b Y8b Y8b  8888 8888         888     888 888     8888 8888 888 b,      Y888 88
 "#;
 
     let header_widget = Paragraph::new(rozzo_ascii_art)
-        .style(Style::default().fg(Color::Green).add_modifier(Modifier::BOLD))
+        .style(Style::default().fg(app.color_scheme.primary_color()).add_modifier(Modifier::BOLD))
         .alignment(Alignment::Center)
         .block(
             Block::default()
                 .title(" ■■■ WEYLAND-YUTANI CORP MAINFRAME SYSTEM 6000 ■■■ ")
                 .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::Green))
+                .border_style(Style::default().fg(app.color_scheme.primary_color()))
                 .border_type(BorderType::Double)
         );
     frame.render_widget(header_widget, outer_layout[0]);
@@ -717,7 +864,7 @@ d8b Y8b Y8b  8888 8888         888     888 888     8888 8888 888 b,      Y888 88
         .constraints([Constraint::Percentage(30), Constraint::Percentage(70)])
         .split(outer_layout[1]);
 
-    let block_style = Style::default().fg(Color::Green);
+    let block_style = Style::default().fg(app.color_scheme.primary_color());
 
     // --- Left Pane ---
     match app.mode {
@@ -725,7 +872,7 @@ d8b Y8b Y8b  8888 8888         888     888 888     8888 8888 888 b,      Y888 88
             let items: Vec<ListItem> = app.browser_entries.iter().map(|path| {
                 let name = path.file_name().unwrap_or_default().to_string_lossy();
                 let prefix = if path.is_dir() { "[D] " } else { "" };
-                ListItem::new(format!("{}{}", prefix, name)).style(Style::default().fg(Color::Green))
+                ListItem::new(format!("{}{}", prefix, name)).style(Style::default().fg(app.color_scheme.primary_color()))
             }).collect();
 
             let title = if app.mode == Mode::ChangingDirectory {
@@ -744,7 +891,7 @@ d8b Y8b Y8b  8888 8888         888     888 888     8888 8888 888 b,      Y888 88
                 .block(browser_block)
                 .highlight_style(
                     Style::default()
-                        .bg(Color::Green)
+                        .bg(app.color_scheme.primary_color())
                         .fg(Color::Black)
                         .add_modifier(Modifier::BOLD),
                 )
@@ -754,7 +901,7 @@ d8b Y8b Y8b  8888 8888         888     888 888     8888 8888 888 b,      Y888 88
         Mode::SelectingTemplate => {
             let items: Vec<ListItem> = app.template_files.iter().map(|path| {
                 ListItem::new(path.file_name().unwrap_or_default().to_string_lossy().to_string())
-                    .style(Style::default().fg(Color::Green))
+                    .style(Style::default().fg(app.color_scheme.primary_color()))
             }).collect();
 
             let block = Block::default()
@@ -767,12 +914,65 @@ d8b Y8b Y8b  8888 8888         888     888 888     8888 8888 888 b,      Y888 88
                 .block(block)
                 .highlight_style(
                     Style::default()
-                        .bg(Color::Green)
+                        .bg(app.color_scheme.primary_color())
                         .fg(Color::Black)
                         .add_modifier(Modifier::BOLD),
                 )
                 .highlight_symbol(" > ");
             frame.render_stateful_widget(list, main_layout[0], &mut app.template_list_state);
+        }
+        Mode::Settings => {
+            let schemes = ColorScheme::all_schemes();
+            let items: Vec<ListItem> = schemes
+                .iter()
+                .map(|scheme| {
+                    let name = scheme.name();
+                    let indicator = if *scheme == app.color_scheme { " ● " } else { " ○ " };
+                    let preview = "█████ SAMPLE TEXT █████";
+                    let item_text = format!("{}{:<12} {}", indicator, name, preview);
+                    ListItem::new(item_text)
+                        .style(Style::default().fg(scheme.primary_color()))
+                })
+                .collect();
+
+            let settings_block = Block::default()
+                .title(" ■■■ WEYLAND-YUTANI COLOR SCHEME SETTINGS ■■■ ")
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(app.color_scheme.primary_color()))
+                .border_type(BorderType::Double);
+
+            let list = List::new(items)
+                .block(settings_block)
+                .highlight_style(
+                    Style::default()
+                        .bg(app.color_scheme.primary_color())
+                        .fg(Color::Black)
+                        .add_modifier(Modifier::BOLD),
+                )
+                .highlight_symbol("► ");
+            frame.render_stateful_widget(list, main_layout[0], &mut app.settings_selection_state);
+            
+            // Settings info pane
+            let selected_scheme = schemes.get(app.settings_selection_state.selected().unwrap_or(0))
+                .unwrap_or(&ColorScheme::Green);
+            let info_content = format!(
+                "\n\n\n████████████████████████████████\n█       COLOR SCHEME PREVIEW       █\n████████████████████████████████\n\n\nSelected: {}\n\nPrimary Color: {:#?}\nSecondary Color: {:#?}\n\nThis theme will be applied to:\n• Interface borders and highlights\n• Text and status information\n• File browser and editor\n\nPress ENTER to apply this theme\nPress ESC to cancel",
+                selected_scheme.name(),
+                selected_scheme.primary_color(),
+                selected_scheme.secondary_color()
+            );
+            
+            let info_block = Block::default()
+                .title(" ■■■ THEME PREVIEW ■■■ ")
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(selected_scheme.primary_color()))
+                .border_type(BorderType::Double);
+
+            let info_paragraph = Paragraph::new(info_content)
+                .style(Style::default().fg(selected_scheme.primary_color()))
+                .block(info_block);
+
+            frame.render_widget(info_paragraph, main_layout[1]);
         }
         _ => { // Normal and Search modes
             // For search mode, we need to add space for the search bar
@@ -786,8 +986,8 @@ d8b Y8b Y8b  8888 8888         888     888 888     8888 8888 888 b,      Y888 88
                 let cursor_char = if (current_time % 2) == 0 { "█" } else { " " };
                 let search_display = format!("{}{}", app.search_input, cursor_char);
                 let search_widget = Paragraph::new(search_display)
-                    .style(Style::default().fg(Color::Green).bg(Color::Black))
-                    .block(Block::default().borders(Borders::ALL).title(" ■■■ SEARCH ARCHIVE ■■■ ").border_type(BorderType::Double));
+                    .style(Style::default().fg(app.color_scheme.primary_color()).bg(Color::Black))
+                    .block(Block::default().borders(Borders::ALL).border_style(Style::default().fg(app.color_scheme.primary_color())).title(" ■■■ SEARCH ARCHIVE ■■■ ").border_type(BorderType::Double));
                 frame.render_widget(search_widget, search_layout[0]);
                 
                 search_layout[1]
@@ -814,9 +1014,9 @@ d8b Y8b Y8b  8888 8888         888     888 888     8888 8888 888 b,      Y888 88
                 .map(|(i, path)| {
                     let filename = path.file_name().unwrap_or_default().to_string_lossy();
                     let (prefix, style) = if path.is_dir() { 
-                        ("▶ [DIR]", Style::default().fg(Color::LightGreen).add_modifier(Modifier::BOLD)) 
+                        ("▶ [DIR]", Style::default().fg(app.color_scheme.secondary_color()).add_modifier(Modifier::BOLD)) 
                     } else { 
-                        ("■ [FILE]", Style::default().fg(Color::Green)) 
+                        ("■ [FILE]", Style::default().fg(app.color_scheme.primary_color())) 
                     };
                     ListItem::new(format!("{:02} {} {}", i + 1, prefix, filename)).style(style)
                 })
@@ -826,7 +1026,7 @@ d8b Y8b Y8b  8888 8888         888     888 888     8888 8888 888 b,      Y888 88
                 .block(file_list_block)
                 .highlight_style(
                     Style::default()
-                        .bg(Color::Green)
+                        .bg(app.color_scheme.primary_color())
                         .fg(Color::Black)
                         .add_modifier(Modifier::BOLD),
                 )
@@ -863,7 +1063,7 @@ d8b Y8b Y8b  8888 8888         888     888 888     8888 8888 888 b,      Y888 88
             .border_type(BorderType::Double);
 
         let paragraph = Paragraph::new(content)
-            .style(Style::default().fg(Color::Green))
+            .style(Style::default().fg(app.color_scheme.primary_color()))
             .block(block);
 
         frame.render_widget(paragraph, main_layout[1]);
@@ -880,8 +1080,8 @@ d8b Y8b Y8b  8888 8888         888     888 888     8888 8888 888 b,      Y888 88
         let cursor_char = if (current_time % 2) == 0 { "█" } else { " " };
         let input_display = format!("{}{}", app.filename_input, cursor_char);
         let input_widget = Paragraph::new(input_display)
-            .style(Style::default().fg(Color::Green).bg(Color::Black))
-            .block(Block::default().borders(Borders::ALL).title(title).border_type(BorderType::Double));
+            .style(Style::default().fg(app.color_scheme.primary_color()).bg(Color::Black))
+            .block(Block::default().borders(Borders::ALL).border_style(Style::default().fg(app.color_scheme.primary_color())).title(title).border_type(BorderType::Double));
         frame.render_widget(Clear, area);
         frame.render_widget(input_widget, area);
     }
@@ -916,7 +1116,7 @@ d8b Y8b Y8b  8888 8888         888     888 888     8888 8888 888 b,      Y888 88
         
         let items: Vec<ListItem> = app.move_destinations
             .iter()
-            .map(|dest| ListItem::new(dest.as_str()).style(Style::default().fg(Color::Green)))
+            .map(|dest| ListItem::new(dest.as_str()).style(Style::default().fg(app.color_scheme.primary_color())))
             .collect();
         
         let list = List::new(items)
@@ -927,7 +1127,7 @@ d8b Y8b Y8b  8888 8888         888     888 888     8888 8888 888 b,      Y888 88
                 .border_type(BorderType::Double))
             .highlight_style(
                 Style::default()
-                    .bg(Color::Green)
+                    .bg(app.color_scheme.primary_color())
                     .fg(Color::Black)
                     .add_modifier(Modifier::BOLD),
             )
@@ -954,7 +1154,7 @@ d8b Y8b Y8b  8888 8888         888     888 888     8888 8888 888 b,      Y888 88
         hours, minutes, seconds, file_count
     );
     let system_bar = Paragraph::new(system_info)
-        .style(Style::default().fg(Color::Green).bg(Color::Black).add_modifier(Modifier::BOLD));
+        .style(Style::default().fg(app.color_scheme.primary_color()).bg(Color::Black).add_modifier(Modifier::BOLD));
     frame.render_widget(system_bar, status_layout[0]);
 
     // Mode and Path Status Line  
@@ -964,12 +1164,12 @@ d8b Y8b Y8b  8888 8888         888     888 888     8888 8888 888 b,      Y888 88
         app.root.to_string_lossy()
     );
     let mode_bar = Paragraph::new(mode_info)
-        .style(Style::default().fg(Color::Black).bg(Color::Green));
+        .style(Style::default().fg(Color::Black).bg(app.color_scheme.primary_color()));
     frame.render_widget(mode_bar, status_layout[1]);
 
     // Controls Line
     let controls_text = match app.mode {
-        Mode::Normal => "▶ NAV: ↑/↓/←/→ ▶ NEW: n ▶ SEARCH: / ▶ TMPL: Shift+T ▶ CHDIR: c ▶ DEL: d ▶ MOVE: m ▶ QUIT: q",
+        Mode::Normal => "▶ NAV: ↑/↓/←/→ ▶ NEW: n ▶ SEARCH: / ▶ TMPL: Shift+T ▶ CHDIR: c ▶ DEL: d ▶ MOVE: m ▶ SETTINGS: s ▶ QUIT: q",
         Mode::Editing => "▶ SAVE & EXIT: Esc",
         Mode::Naming => "▶ CONFIRM: Enter ▶ CANCEL: Esc",
         Mode::ChangingDirectory => "▶ SELECT: s ▶ NAVIGATE: ↑/↓/Enter ▶ CANCEL: Esc",
@@ -978,10 +1178,11 @@ d8b Y8b Y8b  8888 8888         888     888 888     8888 8888 888 b,      Y888 88
         Mode::Search => "▶ NAV: ↑/↓/←/→ ▶ TYPE TO FILTER ▶ DEL: d ▶ MOVE: m ▶ OPEN: Enter/→ ▶ EXIT: Esc",
         Mode::ConfirmingDelete => "▶ CONFIRM: Y/Enter ▶ CANCEL: N/Esc",
         Mode::SelectingMoveDestination => "▶ SELECT: Enter ▶ NAVIGATE: ↑/↓ ▶ CANCEL: Esc",
+        Mode::Settings => "▶ APPLY: Enter ▶ NAVIGATE: ↑/↓ ▶ CANCEL: Esc",
     };
     
     let controls_bar = Paragraph::new(controls_text)
-        .style(Style::default().fg(Color::Green).bg(Color::Black));
+        .style(Style::default().fg(app.color_scheme.primary_color()).bg(Color::Black));
     frame.render_widget(controls_bar, status_layout[2]);
 }
 
