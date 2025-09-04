@@ -691,18 +691,25 @@ fn ui(frame: &mut Frame, app: &mut App) {
         .split(frame.area());
 
     // --- ASCII Header ---
-    let header_text = "
-╔══════════════════════════════════════════════════════════════════════════════╗
-║  ███╗   ███╗██╗   ██╗      ████████╗██╗  ██╗      ██╗   ██╗██████╗   ██████╗  ║
-║  ████╗ ████║██║   ██║      ╚══██╔══╝██║  ██║      ██║   ██║██╔══██╗ ██╔═████╗ ║
-║  ██╔████╔██║██║   ██║ █████╗  ██║   ███████║█████╗██║   ██║██████╔╝ ██║██╔██║ ║
-║  ██║╚██╔╝██║██║   ██║ ╚════╝  ██║   ██╔══██║╚════╝██║   ██║██╔══██╗ ████╔╝██║ ║
-║  ██║ ╚═╝ ██║╚██████╔╝         ██║   ██║  ██║      ╚██████╔╝██║  ██║ ╚██████╔╝ ║
-║  ╚═╝     ╚═╝ ╚═════╝          ╚═╝   ╚═╝  ╚═╝       ╚═════╝ ╚═╝  ╚═╝  ╚═════╝  ║
-╚═══════════════════ WEYLAND-YUTANI CORP MAINFRAME SYSTEM ════════════════════╝";
+    // For now, let's implement Rozzo-style ASCII art manually since figlet-rs may not have that specific font
+    let rozzo_ascii_art = r#"
+   e   e     8888 8888     88P'888'Y88 888 888     8888 8888 888 88e      e88",8,    e88 88e     e88 88e     e88 88e   
+  d8b d8b    8888 8888     P'  888  'Y 888 888     8888 8888 888 888D    d888  "    d888 888b   d888 888b   d888 888b  
+ e Y8b Y8b   8888 8888 888     888     8888888 888 8888 8888 888 88"    C8888 88e  C8888 8888D C8888 8888D C8888 8888D 
+d8b Y8b Y8b  8888 8888         888     888 888     8888 8888 888 b,      Y888 888D  Y888 888P   Y888 888P   Y888 888P  
+888b Y8b Y8b 'Y88 88P'         888     888 888     'Y88 88P' 888 88b,     "88 88"    "88 88"     "88 88"     "88 88"   
+"#;
 
-    let header_widget = Paragraph::new(header_text)
-        .style(Style::default().fg(Color::Green).add_modifier(Modifier::BOLD));
+    let header_widget = Paragraph::new(rozzo_ascii_art)
+        .style(Style::default().fg(Color::Green).add_modifier(Modifier::BOLD))
+        .alignment(Alignment::Center)
+        .block(
+            Block::default()
+                .title(" ■■■ WEYLAND-YUTANI CORP MAINFRAME SYSTEM 6000 ■■■ ")
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Green))
+                .border_type(BorderType::Double)
+        );
     frame.render_widget(header_widget, outer_layout[0]);
 
     let main_layout = Layout::default()
