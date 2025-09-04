@@ -6,7 +6,7 @@ A retro sci-fi terminal-based note-taking application inspired by the Alien univ
 
 ### 🖥️ **Authentic Retro Interface**
 - **Rozzo-style ASCII Art Header**: Beautiful "MU-TH-UR 6000" logo with perfect centering and spacing
-- **Green-on-Black Terminal Aesthetic**: Authentic retro computer styling
+- **Multiple Color Themes**: Seven classic terminal color schemes with live preview
 - **Weyland-Yutani Corp Branding**: Immersive corporate sci-fi theming throughout
 - **Double-line Borders**: Professional terminal UI with consistent framing
 - **Real-time System Status**: Live clock, power levels, file counts, and system information
@@ -33,6 +33,18 @@ A retro sci-fi terminal-based note-taking application inspired by the Alien univ
 - **Auto-save**: Automatic file saving on editor exit
 - **File Preview**: Real-time content preview pane
 
+### 🎨 **Customizable Themes**
+- **Seven Color Schemes**: Choose from classic terminal colors:
+  - 🟢 **Classic Green**: Traditional terminal green
+  - 🔵 **Terminal Blue**: Blue/cyan retro theme
+  - 🟡 **Retro Amber**: Yellow amber theme
+  - 🟠 **Bright Orange**: Vibrant orange theme
+  - 🟢 **Light Green**: Lighter green variant
+  - 🔴 **Alert Red**: Standard red theme
+  - 🔴 **Vibrant Red**: Intense bright red theme
+- **Live Preview**: See themes instantly before applying
+- **Persistent Settings**: Theme preferences saved automatically
+
 ### ⌨️ **Professional Controls**
 - **Vim-inspired Navigation**: Intuitive keyboard shortcuts
 - **Modal Interface**: Context-sensitive controls for different operations
@@ -49,8 +61,8 @@ cargo run
 - →/Enter: Open file/directory - /: Search files (fuzzy)
 - n: Create new note           - Shift+T: New note from template  
 - d: Delete file (with confirm)- m: Move to workflow stage
-- c: Change root directory     - Esc: Exit current mode
-- q: Quit application
+- c: Change root directory     - s: Settings (color themes)
+- Esc: Exit current mode       - q: Quit application
 ```
 
 ## Development
@@ -86,13 +98,15 @@ cargo build --release# Optimized build
 - Fuzzy search with real-time filtering
 - Workflow organization system
 - Template support
+- Seven customizable color themes with live preview
+- Settings screen for theme selection
 - Professional UI with consistent styling
 
 🚧 **Future Enhancements**: 
 - Additional ASCII art fonts
 - More workflow stages
 - Extended template system
-- Configuration customization
+- Additional customization options
 
 ---
 

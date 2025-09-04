@@ -52,8 +52,8 @@ cargo clippy && cargo fmt && cargo check
 ### Application Structure
 The application follows a single-file architecture with clear separation of concerns and comprehensive feature set:
 
-- **`App` struct**: Main application state container managing multiple modes, file operations, search state, and UI components
-- **Advanced Modal System**: Nine distinct modes with specialized functionality:
+- **`App` struct**: Main application state container managing multiple modes, file operations, search state, UI components, and theming
+- **Advanced Modal System**: Ten distinct modes with specialized functionality:
   - `Normal`: File navigation and management
   - `Editing`: Full-featured text editing with auto-save
   - `Naming`: File creation with template integration
@@ -63,18 +63,21 @@ The application follows a single-file architecture with clear separation of conc
   - `Search`: Real-time fuzzy search with filtering
   - `ConfirmingDelete`: Safety confirmation for destructive operations
   - `SelectingMoveDestination`: Workflow stage selection for file organization
-- **Configuration**: Persistent settings in `~/.nostromo-notes.conf` with automatic management
+  - `Settings`: Color scheme selection with live preview
+- **Configuration**: Persistent settings in `~/.nostromo-notes.conf` with automatic management including theme preferences
 - **Workflow Integration**: Built-in file organization system with predefined workflow stages
+- **Dynamic Theming**: Seven color schemes with complete UI integration
 
 ### Key Components
 
 #### State Management (`App` struct)
-- **Multi-modal operation**: Context-sensitive UI and input handling across nine modes
+- **Multi-modal operation**: Context-sensitive UI and input handling across ten modes
 - **File system operations**: Complete CRUD operations with safety confirmations
 - **Fuzzy search system**: Real-time filtering with `SkimMatcherV2` for intelligent matching
 - **Workflow management**: Four-stage workflow system (Uploaded/Rendered/Ready to Upload/Printed)
 - **Template system**: Full template support with directory management
-- **Configuration persistence**: Automatic saving of user preferences and directory settings
+- **Color scheme system**: Seven customizable themes with live preview and persistence
+- **Configuration persistence**: Automatic saving of user preferences, directory settings, and theme selection
 
 #### Advanced UI System (Ratatui-based)
 - **Professional Header**: Rozzo-style ASCII art "MU-TH-UR 6000" with perfect centering and spacing
@@ -82,7 +85,8 @@ The application follows a single-file architecture with clear separation of conc
 - **Two-pane main area**: File browser (30%) and editor/preview (70%)
 - **Real-time status display**: Live clock, file counts, power indicators, mode information
 - **Modal popups**: Professional confirmation dialogs and input forms
-- **Consistent theming**: Double-line borders, green-on-black color scheme, Weyland-Yutani branding
+- **Dynamic theming**: Seven color schemes with complete UI integration, Weyland-Yutani branding
+- **Settings screen**: Dedicated theme selection interface with live preview
 
 #### Enhanced Input Handling
 - **Arrow key navigation**: Full directional control (up/down files, left/right directories)
@@ -97,7 +101,7 @@ The application follows a single-file architecture with clear separation of conc
 - **Seamless integration**: Works across all file operations
 
 ### Dependencies and Their Roles
-- **`ratatui`**: Core TUI framework for rendering and layout management
+- **`ratatui`**: Core TUI framework for rendering and layout management with color support
 - **`crossterm`**: Cross-platform terminal control (events, raw mode, cursor management)
 - **`tui-textarea`**: Full-featured text editor widget with syntax support
 - **`walkdir`**: Recursive directory traversal for file system operations
@@ -106,10 +110,11 @@ The application follows a single-file architecture with clear separation of conc
 
 ### Configuration System
 - **File location**: `~/.nostromo-notes.conf` in user home directory
-- **Format**: Simple key-value pairs (`root=/path` and `template_root=/path`)
+- **Format**: Simple key-value pairs (`root=/path`, `template_root=/path`, `color_scheme=Green`)
 - **Auto-initialization**: Creates welcome file and default settings on first run
-- **Persistent state**: Maintains user preferences across sessions
+- **Persistent state**: Maintains user preferences and theme selection across sessions
 - **Directory management**: Automatic creation of workflow directories
+- **Theme persistence**: Color scheme selection automatically saved and restored
 
 ### Complete Application Flow
 1. **Normal Mode**: Primary interface for file navigation and management
@@ -118,10 +123,11 @@ The application follows a single-file architecture with clear separation of conc
 4. **Workflow Management**: Organize notes through defined workflow stages
 5. **Template System**: Create notes from predefined templates
 6. **Directory Management**: Navigate and configure root and template directories
-7. **Safety Systems**: Confirmation dialogs and operation validation
+7. **Settings Mode**: Color scheme selection with live preview and instant application
+8. **Safety Systems**: Confirmation dialogs and operation validation
 
 ### Current Feature Set
-- ✅ **Complete UI System**: Professional header, status bars, consistent theming
+- ✅ **Complete UI System**: Professional header, status bars, dynamic theming
 - ✅ **Full File Management**: CRUD operations with safety confirmations
 - ✅ **Fuzzy Search**: Real-time filtering with intelligent matching
 - ✅ **Workflow Organization**: Four-stage file organization system
@@ -129,6 +135,8 @@ The application follows a single-file architecture with clear separation of conc
 - ✅ **Advanced Navigation**: Arrow key navigation with directory traversal
 - ✅ **Professional Styling**: Rozzo ASCII art, double borders, authentic theming
 - ✅ **Real-time Status**: Live system information and progress indicators
+- ✅ **Color Theme System**: Seven customizable themes with live preview
+- ✅ **Settings Interface**: Dedicated settings screen for theme selection
 
 ## Key Development Considerations
 
@@ -144,10 +152,18 @@ The application follows a single-file architecture with clear separation of conc
 - Fallback behaviors for missing files or directories
 
 ### Theming and Aesthetics
-- Authentic 1970s retro computer styling with green-on-black color scheme
+- Authentic 1970s retro computer styling with seven selectable color schemes:
+  - **Classic Green**: Traditional terminal green
+  - **Terminal Blue**: Blue/cyan retro theme
+  - **Retro Amber**: Yellow amber theme
+  - **Bright Orange**: Vibrant orange theme (RGB 255, 165, 0)
+  - **Light Green**: Lighter green variant
+  - **Alert Red**: Standard red theme
+  - **Vibrant Red**: Intense bright red theme (RGB 255, 69, 0)
 - Comprehensive Weyland-Yutani Corp branding throughout interface
 - Rozzo-style ASCII art with perfect centering and balanced spacing
 - Professional terminal UI conventions with consistent visual hierarchy
+- Dynamic color integration across all UI components
 
 ### File System Integration
 - Hidden files excluded from listings (files starting with `.`)
