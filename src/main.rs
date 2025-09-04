@@ -29,6 +29,8 @@ enum Mode {
     SelectingTemplateFolder,
     SelectingTemplate,
     Search,
+    ConfirmingDelete,
+    SelectingMoveDestination,
 }
 
 impl Mode {
@@ -41,6 +43,8 @@ impl Mode {
             Mode::SelectingTemplateFolder => "SELECT TMPL DIR",
             Mode::SelectingTemplate => "SELECT TMPL",
             Mode::Search => "SEARCH",
+            Mode::ConfirmingDelete => "CONFIRM DELETE",
+            Mode::SelectingMoveDestination => "SELECT MOVE DEST",
         }
     }
 }
@@ -62,6 +66,10 @@ struct App<'a> {
     search_input: String,
     filtered_files: Vec<PathBuf>,
     fuzzy_matcher: SkimMatcherV2,
+    editing_file_path: Option<PathBuf>,
+    operation_target_file: Option<PathBuf>,
+    move_destinations: Vec<String>,
+    move_selection_state: ListState,
 }
 
 impl<'a> App<'a> {
@@ -83,6 +91,15 @@ impl<'a> App<'a> {
             search_input: String::new(),
             filtered_files: Vec::new(),
             fuzzy_matcher: SkimMatcherV2::default(),
+            editing_file_path: None,
+            operation_target_file: None,
+            move_destinations: vec![
+                "Uploaded".to_string(),
+                "Rendered".to_string(), 
+                "Ready to Upload".to_string(),
+                "Printed".to_string(),
+            ],
+            move_selection_state: ListState::default(),
         };
         app.load_config();
         app.load_files();
@@ -316,6 +333,7 @@ impl<'a> App<'a> {
                     );
                     editor.set_style(Style::default().fg(Color::Green).bg(Color::Black));
                     self.editor = Some(editor);
+                    self.editing_file_path = Some(path.clone());
                     self.mode = Mode::Editing;
                 } else {
                     // This is a directory, so we should enter it
@@ -332,17 +350,8 @@ impl<'a> App<'a> {
     }
 
     fn stop_editing(&mut self) {
-        if let Some(selected_index) = self.file_list_state.selected() {
-            let current_files = if self.mode == Mode::Editing {
-                // When editing, we need to use the files from before we entered edit mode
-                // For simplicity, we'll store the path in the editor and find it in the main files list
-                &self.files
-            } else {
-                self.get_current_files()
-            };
-            if let (Some(editor), Some(path)) = (self.editor.take(), current_files.get(selected_index)) {
-                fs::write(path, editor.lines().join("\n")).ok();
-            }
+        if let (Some(editor), Some(path)) = (self.editor.take(), self.editing_file_path.take()) {
+            fs::write(path, editor.lines().join("\n")).ok();
         }
         self.mode = Mode::Normal;
     }
@@ -397,11 +406,134 @@ impl<'a> App<'a> {
             &self.files
         }
     }
+
+    fn navigate_up_directory(&mut self) {
+        if let Some(parent) = self.root.parent() {
+            self.root = parent.to_path_buf();
+            self.save_config();
+            self.load_files();
+            self.file_list_state.select(Some(0));
+            // Exit search mode when changing directories
+            if self.mode == Mode::Search {
+                self.exit_search_mode();
+            }
+        }
+    }
+
+    fn start_delete_confirmation(&mut self) {
+        if let Some(selected_index) = self.file_list_state.selected() {
+            let current_files = self.get_current_files();
+            if let Some(path) = current_files.get(selected_index).cloned() {
+                if path.is_file() {
+                    self.operation_target_file = Some(path);
+                    self.mode = Mode::ConfirmingDelete;
+                }
+            }
+        }
+    }
+
+    fn confirm_delete(&mut self) {
+        if let Some(path) = self.operation_target_file.take() {
+            fs::remove_file(path).ok();
+            self.load_files();
+            // Reset selection to a valid position
+            if !self.files.is_empty() {
+                let new_selection = self.file_list_state.selected().unwrap_or(0).min(self.files.len() - 1);
+                self.file_list_state.select(Some(new_selection));
+            } else {
+                self.file_list_state.select(None);
+            }
+            // Update filtered files if in search mode
+            if self.mode == Mode::ConfirmingDelete {
+                self.mode = Mode::Normal;
+            }
+            if !self.search_input.is_empty() {
+                self.update_filtered_files();
+            }
+        }
+        self.mode = Mode::Normal;
+    }
+
+    fn cancel_operation(&mut self) {
+        self.operation_target_file = None;
+        self.mode = Mode::Normal;
+    }
+
+    fn start_move_selection(&mut self) {
+        if let Some(selected_index) = self.file_list_state.selected() {
+            let current_files = self.get_current_files();
+            if let Some(path) = current_files.get(selected_index).cloned() {
+                if path.is_file() {
+                    self.operation_target_file = Some(path);
+                    self.move_selection_state.select(Some(0));
+                    self.mode = Mode::SelectingMoveDestination;
+                }
+            }
+        }
+    }
+
+    fn move_selection_next(&mut self) {
+        let count = self.move_destinations.len();
+        let i = match self.move_selection_state.selected() {
+            Some(i) => {
+                if i >= count - 1 {
+                    0
+                } else {
+                    i + 1
+                }
+            }
+            None => 0,
+        };
+        self.move_selection_state.select(Some(i));
+    }
+
+    fn move_selection_previous(&mut self) {
+        let count = self.move_destinations.len();
+        let i = match self.move_selection_state.selected() {
+            Some(i) => {
+                if i == 0 {
+                    count - 1
+                } else {
+                    i - 1
+                }
+            }
+            None => 0,
+        };
+        self.move_selection_state.select(Some(i));
+    }
+
+    fn execute_move(&mut self) {
+        if let (Some(path), Some(dest_index)) = (self.operation_target_file.take(), self.move_selection_state.selected()) {
+            if let Some(dest_folder) = self.move_destinations.get(dest_index) {
+                let dest_path = self.root.join(dest_folder);
+                if let Some(filename) = path.file_name() {
+                    let new_path = dest_path.join(filename);
+                    // Create destination directory if it doesn't exist
+                    fs::create_dir_all(&dest_path).ok();
+                    // Move the file
+                    fs::rename(path, new_path).ok();
+                    self.load_files();
+                    // Reset selection to a valid position
+                    if !self.files.is_empty() {
+                        let new_selection = self.file_list_state.selected().unwrap_or(0).min(self.files.len() - 1);
+                        self.file_list_state.select(Some(new_selection));
+                    } else {
+                        self.file_list_state.select(None);
+                    }
+                    // Update filtered files if in search mode
+                    if !self.search_input.is_empty() {
+                        self.update_filtered_files();
+                    }
+                }
+            }
+        }
+        self.mode = Mode::Normal;
+    }
 }
 
 fn main() -> Result<()> {
     if fs::metadata("welcome.md").is_err() {
-        fs::write("welcome.md", "# Welcome to Nostromo Notes\n\nThis is a retro-themed notes editor.\n\nControls:\n- Up/Down: Navigate files\n- Enter: Edit file or enter directory\n- n: Create new note\n- d: Change directory\n- Shift+T: New note from template\n- Esc: Save and exit editor\n- q: Quit application")?;
+        fs::write("welcome.md", "# Welcome to Nostromo Notes\n\nThis is a retro-themed notes editor.\n\nControls:\n- Up/Down arrows: Navigate files\n- Left arrow: Go up one directory level\n- Right arrow/Enter: Open file or enter directory\n- n: Create new note\n- /: Search files (fuzzy filter)\n- Shift+T: New note from template\n- c: Change directory\n- d: Delete file (with confirmation)\n- m: Move file to workflow stage (Uploaded/Rendered/Ready to Upload/Printed)\n- Esc: Save and exit editor / Exit search\n- q: Quit application")?;
     }
 
     let mut terminal = setup_terminal()?;
@@ -448,12 +580,15 @@ fn run<'a>(
                 Mode::Normal => match key.code {
                     KeyCode::Char('q') => return Ok(()),
                     KeyCode::Char('n') => app.mode = Mode::Naming,
-                    KeyCode::Char('d') => app.enter_directory_browser(false),
+                    KeyCode::Char('c') => app.enter_directory_browser(false), // Changed 'd' to 'c' for change directory
                     KeyCode::Char('T') => app.start_template_workflow(),
                     KeyCode::Char('/') => app.enter_search_mode(),
+                    KeyCode::Char('d') => app.start_delete_confirmation(),
+                    KeyCode::Char('m') => app.start_move_selection(),
                     KeyCode::Down => app.select_next(),
                     KeyCode::Up => app.select_previous(),
-                    KeyCode::Enter => app.start_editing(),
+                    KeyCode::Left => app.navigate_up_directory(),
+                    KeyCode::Right | KeyCode::Enter => app.start_editing(),
                     _ => {} // Ignore other keys
                 },
                 Mode::Editing => match key.code {
@@ -502,6 +637,36 @@ fn run<'a>(
                     KeyCode::Up => app.select_previous(),
                     _ => {} // Ignore other keys
                 },
+                Mode::Search => match key.code {
+                    KeyCode::Esc => app.exit_search_mode(),
+                    KeyCode::Right | KeyCode::Enter => app.start_editing(),
+                    KeyCode::Down => app.select_next(),
+                    KeyCode::Up => app.select_previous(),
+                    KeyCode::Left => app.navigate_up_directory(),
+                    KeyCode::Char('d') => app.start_delete_confirmation(),
+                    KeyCode::Char('m') => app.start_move_selection(),
+                    KeyCode::Char(c) => {
+                        app.search_input.push(c);
+                        app.update_filtered_files();
+                    }
+                    KeyCode::Backspace => {
+                        app.search_input.pop();
+                        app.update_filtered_files();
+                    }
+                    _ => {} // Ignore other keys
+                },
+                Mode::ConfirmingDelete => match key.code {
+                    KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => app.confirm_delete(),
+                    KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => app.cancel_operation(),
+                    _ => {} // Ignore other keys
+                },
+                Mode::SelectingMoveDestination => match key.code {
+                    KeyCode::Esc => app.cancel_operation(),
+                    KeyCode::Enter => app.execute_move(),
+                    KeyCode::Down => app.move_selection_next(),
+                    KeyCode::Up => app.move_selection_previous(),
+                    _ => {} // Ignore other keys
+                },
             }
         }
     }
@@ -510,15 +675,40 @@ fn run<'a>(
 fn ui(frame: &mut Frame, app: &mut App) {
     frame.render_widget(Block::default().style(Style::default().bg(Color::Black)), frame.area());
 
+    // Calculate current time for blinking effects and system status
+    let current_time = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
     let outer_layout = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Min(0), Constraint::Length(1)])
+        .constraints([
+            Constraint::Length(8),  // ASCII Header
+            Constraint::Min(0),     // Main content
+            Constraint::Length(3),  // Status bar + system info
+        ])
         .split(frame.area());
+
+    // --- ASCII Header ---
+    let header_text = "
+╔══════════════════════════════════════════════════════════════════════════════╗
+║  ███╗   ███╗██╗   ██╗      ████████╗██╗  ██╗      ██╗   ██╗██████╗   ██████╗  ║
+║  ████╗ ████║██║   ██║      ╚══██╔══╝██║  ██║      ██║   ██║██╔══██╗ ██╔═████╗ ║
+║  ██╔████╔██║██║   ██║ █████╗  ██║   ███████║█████╗██║   ██║██████╔╝ ██║██╔██║ ║
+║  ██║╚██╔╝██║██║   ██║ ╚════╝  ██║   ██╔══██║╚════╝██║   ██║██╔══██╗ ████╔╝██║ ║
+║  ██║ ╚═╝ ██║╚██████╔╝         ██║   ██║  ██║      ╚██████╔╝██║  ██║ ╚██████╔╝ ║
+║  ╚═╝     ╚═╝ ╚═════╝          ╚═╝   ╚═╝  ╚═╝       ╚═════╝ ╚═╝  ╚═╝  ╚═════╝  ║
+╚═══════════════════ WEYLAND-YUTANI CORP MAINFRAME SYSTEM ════════════════════╝";
+
+    let header_widget = Paragraph::new(header_text)
+        .style(Style::default().fg(Color::Green).add_modifier(Modifier::BOLD));
+    frame.render_widget(header_widget, outer_layout[0]);
 
     let main_layout = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(30), Constraint::Percentage(70)])
-        .split(outer_layout[0]);
+        .split(outer_layout[1]);
 
     let block_style = Style::default().fg(Color::Green);
 
@@ -577,20 +767,51 @@ fn ui(frame: &mut Frame, app: &mut App) {
                 .highlight_symbol(" > ");
             frame.render_stateful_widget(list, main_layout[0], &mut app.template_list_state);
         }
-        _ => { // Normal mode
-            let file_list_block = Block::default() 
-                .title(format!(" MU-TH-UR 6000 ({}) ", app.root.to_string_lossy()))
+        _ => { // Normal and Search modes
+            // For search mode, we need to add space for the search bar
+            let left_pane_area = if app.mode == Mode::Search {
+                let search_layout = Layout::default()
+                    .direction(Direction::Vertical)
+                    .constraints([Constraint::Length(3), Constraint::Min(0)])
+                    .split(main_layout[0]);
+                
+                // Render search bar with blinking cursor effect
+                let cursor_char = if (current_time % 2) == 0 { "█" } else { " " };
+                let search_display = format!("{}{}", app.search_input, cursor_char);
+                let search_widget = Paragraph::new(search_display)
+                    .style(Style::default().fg(Color::Green).bg(Color::Black))
+                    .block(Block::default().borders(Borders::ALL).title(" ■■■ SEARCH ARCHIVE ■■■ ").border_type(BorderType::Double));
+                frame.render_widget(search_widget, search_layout[0]);
+                
+                search_layout[1]
+            } else {
+                main_layout[0]
+            };
+
+            let title = if app.mode == Mode::Search {
+                format!(" ■■■ SEARCH RESULTS ({}/{}) ■■■ ", app.filtered_files.len(), app.files.len())
+            } else {
+                format!(" ■■■ MU-TH-UR 6000 FILE ARCHIVE ({}) ■■■ ", app.root.to_string_lossy())
+            };
+
+            let file_list_block = Block::default()
+                .title(title)
                 .borders(Borders::ALL)
                 .border_style(block_style)
                 .border_type(BorderType::Double);
 
-            let items: Vec<ListItem> = app
-                .files
+            let current_files = app.get_current_files();
+            let items: Vec<ListItem> = current_files
                 .iter()
-                .map(|path| {
+                .enumerate()
+                .map(|(i, path)| {
                     let filename = path.file_name().unwrap_or_default().to_string_lossy();
-                    let prefix = if path.is_dir() { "[D] " } else { "" };
-                    ListItem::new(format!("{}{}", prefix, filename)).style(Style::default().fg(Color::Green))
+                    let (prefix, style) = if path.is_dir() { 
+                        ("▶ [DIR]", Style::default().fg(Color::LightGreen).add_modifier(Modifier::BOLD)) 
+                    } else { 
+                        ("■ [FILE]", Style::default().fg(Color::Green)) 
+                    };
+                    ListItem::new(format!("{:02} {} {}", i + 1, prefix, filename)).style(style)
                 })
                 .collect();
 
@@ -602,9 +823,9 @@ fn ui(frame: &mut Frame, app: &mut App) {
                         .fg(Color::Black)
                         .add_modifier(Modifier::BOLD),
                 )
-                .highlight_symbol(" > ");
+                .highlight_symbol("► ");
 
-            frame.render_stateful_widget(file_list, main_layout[0], &mut app.file_list_state);
+            frame.render_stateful_widget(file_list, left_pane_area, &mut app.file_list_state);
         }
     }
 
@@ -613,7 +834,8 @@ fn ui(frame: &mut Frame, app: &mut App) {
         frame.render_widget(&*editor, main_layout[1]);
     } else {
         let (title, content) = if let Some(selected_index) = app.file_list_state.selected() {
-            app.files.get(selected_index)
+            let current_files = app.get_current_files();
+            current_files.get(selected_index)
                 .and_then(|path| {
                     if path.is_dir() {
                         Some(("[DIR]".to_string(), path.to_string_lossy().into_owned()))
@@ -621,10 +843,10 @@ fn ui(frame: &mut Frame, app: &mut App) {
                         fs::read_to_string(path).ok().map(|content| (path.file_name().unwrap_or_default().to_string_lossy().into_owned(), content))
                     }
                 })
-                .map(|(name, content)| (format!(" Preview: {} ", name), content))
-                .unwrap_or_else(|| ("Weyland-Yutani Corp - File Viewer ".to_string(), "\n\n\n\n\n        < PREVIEW NOT AVAILABLE >".to_string()))
+                .map(|(name, content)| (format!(" ■■■ VIEWING: {} ■■■ ", name), content))
+                .unwrap_or_else(|| (" ■■■ WEYLAND-YUTANI CORP - FILE VIEWER ■■■ ".to_string(), "\n\n\n\n████████████████████\n█     < PREVIEW NOT AVAILABLE >     █\n████████████████████".to_string()))
         } else {
-            ("Weyland-Yutani Corp - File Viewer ".to_string(), "\n\n\n\n\n        < SELECT A FILE FROM THE MU-TH-UR 6000 ARCHIVE >".to_string())
+            (" ■■■ WEYLAND-YUTANI CORP - FILE VIEWER ■■■ ".to_string(), "\n\n\n████████████████████████████████\n█  < SELECT A FILE FROM THE MU-TH-UR >  █\n█  < 6000 MAINFRAME ARCHIVE SYSTEM >  █\n████████████████████████████████".to_string())
         };
 
         let block = Block::default()
@@ -642,38 +864,118 @@ fn ui(frame: &mut Frame, app: &mut App) {
 
     // --- Naming Popup ---
     if app.mode == Mode::Naming {
-        let area = centered_rect(60, 3, frame.area());
+        let area = centered_rect(70, 3, frame.area());
         let title = if app.pending_template.is_some() {
-            " New Note From Template "
+            " ■■■ CREATE NEW NOTE FROM TEMPLATE ■■■ "
         } else {
-            " New Note Name "
+            " ■■■ CREATE NEW NOTE FILE ■■■ "
         };
-        let input_widget = Paragraph::new(app.filename_input.as_str())
+        let cursor_char = if (current_time % 2) == 0 { "█" } else { " " };
+        let input_display = format!("{}{}", app.filename_input, cursor_char);
+        let input_widget = Paragraph::new(input_display)
             .style(Style::default().fg(Color::Green).bg(Color::Black))
-            .block(Block::default().borders(Borders::ALL).title(title));
+            .block(Block::default().borders(Borders::ALL).title(title).border_type(BorderType::Double));
         frame.render_widget(Clear, area);
         frame.render_widget(input_widget, area);
     }
 
-    // --- Status Bar ---
-    let controls_text = match app.mode {
-        Mode::Normal => "NEW: n | TMPL: Shift+T | CHDIR: d | QUIT: q",
-        Mode::Editing => "SAVE & EXIT: Esc",
-        Mode::Naming => "CONFIRM: Enter | CANCEL: Esc",
-        Mode::ChangingDirectory => "SELECT: s | NAVIGATE: ↑/↓/Enter | CANCEL: Esc",
-        Mode::SelectingTemplateFolder => "SELECT: s | NAVIGATE: ↑/↓/Enter | CANCEL: Esc",
-        Mode::SelectingTemplate => "SELECT: Enter | CANCEL: Esc",
-    };
+    // --- Delete Confirmation Popup ---
+    if app.mode == Mode::ConfirmingDelete {
+        let area = centered_rect(70, 7, frame.area());
+        let filename = app.operation_target_file
+            .as_ref()
+            .and_then(|p| p.file_name())
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "Unknown".to_string());
+        let content = format!(
+            "████████████████████████████\n█    ⚠ WARNING: DESTRUCTIVE OPERATION    █\n█                                          █\n█    DELETE FILE: '{}'?               █\n█                                          █\n█    [Y] CONFIRM   [N/ESC] CANCEL        █\n████████████████████████████",
+            filename
+        );
+        let delete_widget = Paragraph::new(content)
+            .style(Style::default().fg(Color::Red).bg(Color::Black).add_modifier(Modifier::BOLD))
+            .block(Block::default().borders(Borders::ALL).title(" ■■■ WEYLAND-YUTANI SECURITY PROTOCOL ■■■ ").border_type(BorderType::Double));
+        frame.render_widget(Clear, area);
+        frame.render_widget(delete_widget, area);
+    }
 
-    let status_text = format!(
-        " MODE: {} | ROOT: {} | {}",
-        app.mode.to_string(),
-        app.root.to_string_lossy(),
-        controls_text
+    // --- Move Destination Selection Popup ---
+    if app.mode == Mode::SelectingMoveDestination {
+        let area = centered_rect(50, 8, frame.area());
+        let filename = app.operation_target_file
+            .as_ref()
+            .and_then(|p| p.file_name())
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "Unknown".to_string());
+        
+        let items: Vec<ListItem> = app.move_destinations
+            .iter()
+            .map(|dest| ListItem::new(dest.as_str()).style(Style::default().fg(Color::Green)))
+            .collect();
+        
+        let list = List::new(items)
+            .block(Block::default()
+                .borders(Borders::ALL)
+                .title(format!(" ■■■ RELOCATE FILE: '{}' TO WORKFLOW STAGE ■■■ ", filename))
+                .border_style(block_style)
+                .border_type(BorderType::Double))
+            .highlight_style(
+                Style::default()
+                    .bg(Color::Green)
+                    .fg(Color::Black)
+                    .add_modifier(Modifier::BOLD),
+            )
+            .highlight_symbol("► ");
+        
+        frame.render_widget(Clear, area);
+        frame.render_stateful_widget(list, area, &mut app.move_selection_state);
+    }
+
+    // --- Enhanced Status Bar ---
+    let status_layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(1), Constraint::Length(1), Constraint::Length(1)])
+        .split(outer_layout[2]);
+
+    // System Status Line
+    let hours = (current_time / 3600) % 24;
+    let minutes = (current_time / 60) % 60;
+    let seconds = current_time % 60;
+    
+    let file_count = app.files.len();
+    let system_info = format!(
+        "███ WEYLAND-YUTANI CORP ███ TIME: {:02}:{:02}:{:02} ███ FILES: {} ███ POWER: [████████████████████] 100% ███",
+        hours, minutes, seconds, file_count
     );
-    let status_bar = Paragraph::new(status_text)
+    let system_bar = Paragraph::new(system_info)
+        .style(Style::default().fg(Color::Green).bg(Color::Black).add_modifier(Modifier::BOLD));
+    frame.render_widget(system_bar, status_layout[0]);
+
+    // Mode and Path Status Line  
+    let mode_info = format!(
+        "███ MODE: {} ███ DIRECTORY: {} ███",
+        app.mode.to_string(),
+        app.root.to_string_lossy()
+    );
+    let mode_bar = Paragraph::new(mode_info)
         .style(Style::default().fg(Color::Black).bg(Color::Green));
-    frame.render_widget(status_bar, outer_layout[1]);
+    frame.render_widget(mode_bar, status_layout[1]);
+
+    // Controls Line
+    let controls_text = match app.mode {
+        Mode::Normal => "▶ NAV: ↑/↓/←/→ ▶ NEW: n ▶ SEARCH: / ▶ TMPL: Shift+T ▶ CHDIR: c ▶ DEL: d ▶ MOVE: m ▶ QUIT: q",
+        Mode::Editing => "▶ SAVE & EXIT: Esc",
+        Mode::Naming => "▶ CONFIRM: Enter ▶ CANCEL: Esc",
+        Mode::ChangingDirectory => "▶ SELECT: s ▶ NAVIGATE: ↑/↓/Enter ▶ CANCEL: Esc",
+        Mode::SelectingTemplateFolder => "▶ SELECT: s ▶ NAVIGATE: ↑/↓/Enter ▶ CANCEL: Esc",
+        Mode::SelectingTemplate => "▶ SELECT: Enter ▶ CANCEL: Esc",
+        Mode::Search => "▶ NAV: ↑/↓/←/→ ▶ TYPE TO FILTER ▶ DEL: d ▶ MOVE: m ▶ OPEN: Enter/→ ▶ EXIT: Esc",
+        Mode::ConfirmingDelete => "▶ CONFIRM: Y/Enter ▶ CANCEL: N/Esc",
+        Mode::SelectingMoveDestination => "▶ SELECT: Enter ▶ NAVIGATE: ↑/↓ ▶ CANCEL: Esc",
+    };
+    
+    let controls_bar = Paragraph::new(controls_text)
+        .style(Style::default().fg(Color::Green).bg(Color::Black));
+    frame.render_widget(controls_bar, status_layout[2]);
 }
 
 /// Helper function to create a centered rect using up certain percentage of the available rect `r`
