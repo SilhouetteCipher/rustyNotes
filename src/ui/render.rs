@@ -6,7 +6,7 @@ use crate::app::App;
 use crate::modes::Mode;
 use crate::ui::themes::ColorScheme;
 use crate::ui::components::centered_rect;
-use crate::constants::ROZZO_ASCII_ART;
+use crate::constants::WEYLAND_YUTANI_LOGO;
 
 pub fn ui(frame: &mut Frame, app: &mut App) {
     frame.render_widget(Block::default().style(Style::default().bg(Color::Black)), frame.area());
@@ -20,27 +20,29 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
     let outer_layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(8),  // ASCII Header
+            Constraint::Length(16), // ASCII Header (dotted logo only)
+            Constraint::Length(3),  // Corporate text pane
             Constraint::Min(0),     // Main content
             Constraint::Length(3),  // Status bar + system info
         ])
         .split(frame.area());
 
     render_header(frame, app, outer_layout[0]);
+    render_corporate_text(frame, app, outer_layout[1]);
     
     let main_layout = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(30), Constraint::Percentage(70)])
-        .split(outer_layout[1]);
+        .split(outer_layout[2]);
 
     render_left_pane(frame, app, main_layout[0], current_time);
     render_right_pane(frame, app, main_layout[1]);
     render_popups(frame, app, current_time);
-    render_status_bar(frame, app, outer_layout[2], current_time);
+    render_status_bar(frame, app, outer_layout[3], current_time);
 }
 
 fn render_header(frame: &mut Frame, app: &App, area: Rect) {
-    let header_widget = Paragraph::new(ROZZO_ASCII_ART)
+    let header_widget = Paragraph::new(WEYLAND_YUTANI_LOGO)
         .style(Style::default().fg(app.color_scheme.primary_color()).add_modifier(Modifier::BOLD))
         .alignment(Alignment::Center)
         .block(
@@ -51,6 +53,20 @@ fn render_header(frame: &mut Frame, app: &App, area: Rect) {
                 .border_type(BorderType::Double)
         );
     frame.render_widget(header_widget, area);
+}
+
+fn render_corporate_text(frame: &mut Frame, app: &App, area: Rect) {
+    let corporate_text = "BUILDING BETTER WORLDS • NOSTROMO NOTES SYSTEM v2.1\n\"Our work here benefits all mankind. Our future is unlimited.\"";
+    let text_widget = Paragraph::new(corporate_text)
+        .style(Style::default().fg(app.color_scheme.primary_color()))
+        .alignment(Alignment::Center)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(app.color_scheme.primary_color()))
+                .border_type(BorderType::Double)
+        );
+    frame.render_widget(text_widget, area);
 }
 
 fn render_left_pane(frame: &mut Frame, app: &mut App, area: Rect, current_time: u64) {
@@ -166,12 +182,19 @@ fn render_file_list_mode(frame: &mut Frame, app: &mut App, area: Rect, block_sty
             .constraints([Constraint::Length(3), Constraint::Min(0)])
             .split(area);
         
-        // Render search bar with blinking cursor effect
-        let cursor_char = if (current_time % 2) == 0 { "█" } else { " " };
+        // Render search bar with enhanced cursor effect
+        let (cursor_char, search_title, search_style) = if app.search_input_mode {
+            // Input mode: fast blinking cursor, highlighted background
+            let cursor = if (current_time % 2) == 0 { "█" } else { " " };
+            (cursor, " ■■■ SEARCH ARCHIVE [TYPING] ■■■ ", Style::default().fg(app.color_scheme.primary_color()).bg(Color::Black))
+        } else {
+            // Navigation mode: no cursor, different title, dimmed style
+            ("", " ■■■ SEARCH RESULTS [LOCKED] ■■■ ", Style::default().fg(app.color_scheme.secondary_color()).bg(Color::Black))
+        };
         let search_display = format!("{}{}", app.search_input, cursor_char);
         let search_widget = Paragraph::new(search_display)
-            .style(Style::default().fg(app.color_scheme.primary_color()).bg(Color::Black))
-            .block(Block::default().borders(Borders::ALL).border_style(Style::default().fg(app.color_scheme.primary_color())).title(" ■■■ SEARCH ARCHIVE ■■■ ").border_type(BorderType::Double));
+            .style(search_style)
+            .block(Block::default().borders(Borders::ALL).border_style(Style::default().fg(app.color_scheme.primary_color())).title(search_title).border_type(BorderType::Double));
         frame.render_widget(search_widget, search_layout[0]);
         
         search_layout[1]
@@ -288,6 +311,7 @@ fn render_file_preview(frame: &mut Frame, app: &App, area: Rect, block_style: St
 fn render_popups(frame: &mut Frame, app: &mut App, current_time: u64) {
     match app.mode {
         Mode::Naming => render_naming_popup(frame, app, current_time),
+        Mode::Renaming => render_rename_popup(frame, app, current_time),
         Mode::ConfirmingDelete => render_delete_confirmation_popup(frame, app),
         Mode::SelectingMoveDestination => render_move_destination_popup(frame, app),
         _ => {}
@@ -310,20 +334,43 @@ fn render_naming_popup(frame: &mut Frame, app: &App, current_time: u64) {
     frame.render_widget(input_widget, area);
 }
 
+fn render_rename_popup(frame: &mut Frame, app: &App, current_time: u64) {
+    let area = centered_rect(70, 3, frame.area());
+    let title = " ■■■ RENAME FILE ■■■ ";
+    let cursor_char = if (current_time % 2) == 0 { "█" } else { " " };
+    let input_display = format!("{}{}", app.filename_input, cursor_char);
+    let input_widget = Paragraph::new(input_display)
+        .style(Style::default().fg(app.color_scheme.primary_color()).bg(Color::Black))
+        .block(Block::default().borders(Borders::ALL).border_style(Style::default().fg(app.color_scheme.primary_color())).title(title).border_type(BorderType::Double));
+    frame.render_widget(Clear, area);
+    frame.render_widget(input_widget, area);
+}
+
 fn render_delete_confirmation_popup(frame: &mut Frame, app: &App) {
-    let area = centered_rect(70, 7, frame.area());
+    let area = centered_rect(60, 9, frame.area());
     let filename = app.operation_target_file
         .as_ref()
         .and_then(|p| p.file_name())
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| "Unknown".to_string());
+    
+    // Clean, properly aligned content without conflicting borders
     let content = format!(
-        "████████████████████████████\n█    ⚠ WARNING: DESTRUCTIVE OPERATION    █\n█                                          █\n█    DELETE FILE: '{}'?               █\n█                                          █\n█    [Y] CONFIRM   [N/ESC] CANCEL        █\n████████████████████████████",
+        "\n\n    ⚠  WARNING: DESTRUCTIVE OPERATION  ⚠\n\n\n    DELETE FILE: '{}'?\n\n\n    [Y] CONFIRM     [N/ESC] CANCEL\n\n",
         filename
     );
+    
     let delete_widget = Paragraph::new(content)
         .style(Style::default().fg(Color::Red).bg(Color::Black).add_modifier(Modifier::BOLD))
-        .block(Block::default().borders(Borders::ALL).title(" ■■■ WEYLAND-YUTANI SECURITY PROTOCOL ■■■ ").border_type(BorderType::Double));
+        .alignment(Alignment::Center)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(" ■■■ WEYLAND-YUTANI SECURITY PROTOCOL ■■■ ")
+                .border_style(Style::default().fg(Color::Red))
+                .border_type(BorderType::Double)
+        );
+    
     frame.render_widget(Clear, area);
     frame.render_widget(delete_widget, area);
 }
@@ -366,15 +413,21 @@ fn render_status_bar(frame: &mut Frame, app: &App, area: Rect, current_time: u64
         .constraints([Constraint::Length(1), Constraint::Length(1), Constraint::Length(1)])
         .split(area);
 
-    // System Status Line
+    // Enhanced System Status Line with retro metrics and blinking status lights
     let hours = (current_time / 3600) % 24;
     let minutes = (current_time / 60) % 60;
     let seconds = current_time % 60;
+    let uptime = current_time - app.app_start_time;
     
-    let file_count = app.files.len();
+    // Generate fake retro computer metrics
+    let cpu_load = ((current_time * 7) % 100) + 15; // Pseudo-random 15-115%
+    let memory_used = 8 + ((current_time * 3) % 56); // 8-64K range
+    let temperature = 18 + ((current_time * 2) % 15); // 18-33°C range
+    
+    // Static status lights - no blinking to avoid stuttering
     let system_info = format!(
-        "███ WEYLAND-YUTANI CORP ███ TIME: {:02}:{:02}:{:02} ███ FILES: {} ███ POWER: [████████████████████] 100% ███",
-        hours, minutes, seconds, file_count
+        "███ MU-TH-UR 6000 ███ {:02}:{:02}:{:02} ███ UPTIME: {}S ███ CPU: {}% ███ MEM: {}K/64K ███ TEMP: {}°C ███ PWR:● SYS:● LIFE:●",
+        hours, minutes, seconds, uptime, cpu_load, memory_used, temperature
     );
     let system_bar = Paragraph::new(system_info)
         .style(Style::default().fg(app.color_scheme.primary_color()).bg(Color::Black).add_modifier(Modifier::BOLD));
@@ -392,13 +445,18 @@ fn render_status_bar(frame: &mut Frame, app: &App, area: Rect, current_time: u64
 
     // Controls Line
     let controls_text = match app.mode {
-        Mode::Normal => "▶ NAV: ↑/↓/←/→ ▶ NEW: n ▶ SEARCH: / ▶ TMPL: Shift+T ▶ CHDIR: c ▶ DEL: d ▶ MOVE: m ▶ SETTINGS: s ▶ QUIT: q",
-        Mode::Editing => "▶ SAVE & EXIT: Esc",
+        Mode::Normal => "▶ NAV: ↑/↓/←/→ ▶ NEW: n ▶ RENAME: r ▶ SEARCH: / ▶ TMPL: Shift+T ▶ CHDIR: c ▶ DEL: d ▶ MOVE: m ▶ SETTINGS: s ▶ QUIT: q",
+        Mode::Editing => "▶ SAVE & EXIT: Esc ▶ COPY: Ctrl+C",
         Mode::Naming => "▶ CONFIRM: Enter ▶ CANCEL: Esc",
+        Mode::Renaming => "▶ CONFIRM: Enter ▶ CANCEL: Esc",
         Mode::ChangingDirectory => "▶ SELECT: s ▶ NAVIGATE: ↑/↓/Enter ▶ CANCEL: Esc",
         Mode::SelectingTemplateFolder => "▶ SELECT: s ▶ NAVIGATE: ↑/↓/Enter ▶ CANCEL: Esc",
         Mode::SelectingTemplate => "▶ SELECT: Enter ▶ CANCEL: Esc",
-        Mode::Search => "▶ NAV: ↑/↓/←/→ ▶ TYPE TO FILTER ▶ DEL: d ▶ MOVE: m ▶ OPEN: Enter/→ ▶ EXIT: Esc",
+        Mode::Search => if app.search_input_mode {
+            "▶ TYPE QUERY ▶ LOCK INPUT: Enter ▶ CANCEL SEARCH: Esc"
+        } else {
+            "▶ NAV: ↑/↓/←/→ ▶ EDIT QUERY: / ▶ DEL: d ▶ MOVE: m ▶ RENAME: r ▶ OPEN: Enter/→ ▶ EXIT: Esc"
+        },
         Mode::ConfirmingDelete => "▶ CONFIRM: Y/Enter ▶ CANCEL: N/Esc",
         Mode::SelectingMoveDestination => "▶ SELECT: Enter ▶ NAVIGATE: ↑/↓ ▶ CANCEL: Esc",
         Mode::Settings => "▶ APPLY: Enter ▶ NAVIGATE: ↑/↓ ▶ CANCEL: Esc",

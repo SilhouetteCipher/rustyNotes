@@ -21,11 +21,12 @@ A retro sci-fi terminal-based note-taking application inspired by the Alien univ
 - **File Operations**: Create, edit, delete with safety confirmations
 - **Directory Browsing**: Seamless folder navigation
 
-### 🔍 **Intelligent Search System**
-- **Fuzzy Search**: Real-time file filtering with partial matching
-- **Blinking Cursor Effects**: Authentic terminal input experience
+### 🔍 **Advanced Search System**
+- **Two-Phase Fuzzy Search**: Type query, then navigate results separately
+- **Intelligent Cursor**: Blinking cursor in input mode, clean navigation mode
 - **Search Results Counter**: Shows filtered vs total file counts
-- **Instant Results**: Type-as-you-search functionality
+- **Instant Results**: Real-time filtering as you type
+- **Visual Mode Indicators**: Clear [TYPING] vs [LOCKED] status display
 
 ### 📝 **Note Creation & Templates**
 - **Template System**: Create notes from predefined templates
@@ -47,22 +48,66 @@ A retro sci-fi terminal-based note-taking application inspired by the Alien univ
 
 ### ⌨️ **Professional Controls**
 - **Vim-inspired Navigation**: Intuitive keyboard shortcuts
-- **Modal Interface**: Context-sensitive controls for different operations
+- **Modal Interface**: Context-sensitive controls for different operations  
 - **Visual Feedback**: Clear status indicators and confirmation dialogs
+- **Clipboard Integration**: Copy file content as HTML/plain text for CMS compatibility
+- **File Renaming**: In-place file renaming with visual confirmation
+- **Retro System Status**: Live CPU, memory, temperature metrics with status lights
 
-## Quick Start
+## Installation & Usage
 
+### **Quick Setup (New Machine)**
 ```bash
-# Build and run
+# Clone the repository
+git clone <repository-url>
+cd nostromo-notes
+
+# Install system-wide (recommended)
+cargo install --path .
+
+# Add cargo bin to PATH (if not already added)
+echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
+
+# Launch from anywhere
+nostromo-notes
+```
+
+### **Alternative: Development Build**
+```bash
+# Development build (slower)
 cargo run
 
-# Essential Controls
+# Release build (faster, optimized)
+cargo build --release
+./target/release/nostromo-notes
+```
+
+### **Essential Controls**
+```bash
+# Navigation
 - ↑/↓: Navigate files          - ←: Go up directory
 - →/Enter: Open file/directory - /: Search files (fuzzy)
-- n: Create new note           - Shift+T: New note from template  
+
+# File Operations  
+- n: Create new note           - r: Rename file
+- Shift+T: New note from template
 - d: Delete file (with confirm)- m: Move to workflow stage
+- Ctrl+C: Copy file content (in editor)
+
+# System
 - c: Change root directory     - s: Settings (color themes)
 - Esc: Exit current mode       - q: Quit application
+```
+
+### **Advanced Search**
+```bash
+# Two-Phase Search System:
+1. Press "/" to enter search mode
+2. Type your query (fuzzy matching)
+3. Press "Enter" to lock search and navigate results
+4. Press "/" again to modify search query
+5. Press "Esc" to exit search
 ```
 
 ## Development
@@ -72,8 +117,9 @@ cargo run
 cargo check          # Quick compilation check
 cargo clippy         # Linting and suggestions  
 cargo fmt            # Format code
-cargo run            # Build and run
-cargo build --release# Optimized build
+cargo run            # Build and run (debug)
+cargo build --release# Optimized production build
+cargo install --path .# Install system-wide
 ```
 
 ## Requirements
@@ -93,14 +139,16 @@ cargo build --release# Optimized build
 ## Project Status
 
 ✅ **Core Features Complete**:
-- Retro ASCII art header with perfect spacing
-- Full file management (create, edit, delete, move)
-- Fuzzy search with real-time filtering
-- Workflow organization system
-- Template support
-- Seven customizable color themes with live preview
-- Settings screen for theme selection
-- Professional UI with consistent styling
+- 🖥️ **Authentic Retro Interface**: MU-TH-UR 6000 ASCII art with Weyland-Yutani branding
+- 🗋 **Advanced File Management**: Create, edit, delete, rename, move with confirmations
+- 🔍 **Two-Phase Fuzzy Search**: Input mode + navigation mode with visual indicators  
+- 📁 **Workflow Organization**: Four-stage workflow system for note management
+- 📄 **Template System**: Create notes from predefined templates
+- 🎨 **Seven Color Themes**: Live preview with instant theme switching
+- ⚙️ **Settings Interface**: Dedicated settings screen for customization
+- 📋 **Clipboard Integration**: Copy content as HTML + plain text for CMS compatibility
+- 🖥️ **System Monitoring**: Live CPU, memory, temperature with status indicators
+- 🎯 **Professional UI**: Consistent double-line borders and retro styling
 
 🚧 **Future Enhancements**: 
 - Additional ASCII art fonts

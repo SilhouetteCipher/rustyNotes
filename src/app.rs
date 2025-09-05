@@ -1,5 +1,5 @@
 use ratatui::widgets::{ListState};
-use std::{path::PathBuf};
+use std::{path::PathBuf, time::{SystemTime, UNIX_EPOCH}};
 use tui_textarea::TextArea;
 use fuzzy_matcher::skim::SkimMatcherV2;
 
@@ -23,6 +23,7 @@ pub struct App<'a> {
     pub template_files: Vec<PathBuf>,
     pub template_list_state: ListState,
     pub search_input: String,
+    pub search_input_mode: bool, // true = typing search, false = navigating results
     pub filtered_files: Vec<PathBuf>,
     pub fuzzy_matcher: SkimMatcherV2,
     pub editing_file_path: Option<PathBuf>,
@@ -31,11 +32,18 @@ pub struct App<'a> {
     pub move_selection_state: ListState,
     pub color_scheme: ColorScheme,
     pub settings_selection_state: ListState,
+    // Animation timing fields
+    pub app_start_time: u64,
+    pub last_update_time: u64,
 }
 
 impl<'a> App<'a> {
     pub fn new() -> Self {
         let (root, template_root, color_scheme) = config::load_config();
+        let current_time = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
         
         let mut app = Self {
             mode: Mode::Normal,
@@ -52,6 +60,7 @@ impl<'a> App<'a> {
             template_files: Vec::new(),
             template_list_state: ListState::default(),
             search_input: String::new(),
+            search_input_mode: true,
             filtered_files: Vec::new(),
             fuzzy_matcher: SkimMatcherV2::default(),
             editing_file_path: None,
@@ -60,6 +69,8 @@ impl<'a> App<'a> {
             move_selection_state: ListState::default(),
             color_scheme,
             settings_selection_state: ListState::default(),
+            app_start_time: current_time,
+            last_update_time: current_time,
         };
         
         app.load_files();

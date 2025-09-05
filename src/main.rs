@@ -1,5 +1,5 @@
 use ratatui::crossterm::{
-    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind},
+    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind, KeyModifiers},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -8,6 +8,7 @@ use std::{error::Error, fs, io};
 
 mod app;
 mod app_methods;
+mod clipboard;
 mod config;
 mod constants;
 mod file_ops;
@@ -58,6 +59,7 @@ fn run<'a>(
     app: &mut App<'a>,
 ) -> Result<()> {
     loop {
+        app.update_timing();
         terminal.draw(|f| ui(f, app))?;
 
         if let Event::Key(key) = event::read()? {
@@ -70,6 +72,7 @@ fn run<'a>(
                 Mode::Normal => match key.code {
                     KeyCode::Char('q') => return Ok(()),
                     KeyCode::Char('n') => app.mode = Mode::Naming,
+                    KeyCode::Char('r') => app.start_rename(),
                     KeyCode::Char('c') => app.enter_directory_browser(false),
                     KeyCode::Char('T') => app.start_template_workflow(),
                     KeyCode::Char('/') => app.enter_search_mode(),
@@ -84,6 +87,9 @@ fn run<'a>(
                 },
                 Mode::Editing => match key.code {
                     KeyCode::Esc => app.stop_editing(),
+                    KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                        app.copy_file_to_clipboard();
+                    }
                     _ => {
                         if let Some(editor) = app.editor.as_mut() {
                             editor.input(key);
@@ -97,6 +103,17 @@ fn run<'a>(
                         app.pending_template = None;
                         app.mode = Mode::Normal;
                     }
+                    KeyCode::Char(c) => {
+                        app.filename_input.push(c);
+                    }
+                    KeyCode::Backspace => {
+                        app.filename_input.pop();
+                    }
+                    _ => {}
+                },
+                Mode::Renaming => match key.code {
+                    KeyCode::Enter => app.execute_rename(),
+                    KeyCode::Esc => app.cancel_rename(),
                     KeyCode::Char(c) => {
                         app.filename_input.push(c);
                     }
@@ -128,23 +145,40 @@ fn run<'a>(
                     KeyCode::Up => app.select_previous(),
                     _ => {}
                 },
-                Mode::Search => match key.code {
-                    KeyCode::Esc => app.exit_search_mode(),
-                    KeyCode::Right | KeyCode::Enter => app.start_editing(),
-                    KeyCode::Down => app.select_next(),
-                    KeyCode::Up => app.select_previous(),
-                    KeyCode::Left => app.navigate_up_directory(),
-                    KeyCode::Char('d') => app.start_delete_confirmation(),
-                    KeyCode::Char('m') => app.start_move_selection(),
-                    KeyCode::Char(c) => {
-                        app.search_input.push(c);
-                        app.update_filtered_files();
+                Mode::Search => {
+                    if app.search_input_mode {
+                        // Input mode: typing search query
+                        match key.code {
+                            KeyCode::Esc => app.exit_search_mode(),
+                            KeyCode::Enter => app.toggle_search_mode(), // Switch to navigation mode
+                            KeyCode::Char(c) => {
+                                app.search_input.push(c);
+                                app.update_filtered_files();
+                            }
+                            KeyCode::Backspace => {
+                                app.search_input.pop();
+                                app.update_filtered_files();
+                            }
+                            _ => {}
+                        }
+                    } else {
+                        // Navigation mode: can navigate and perform actions on filtered results
+                        match key.code {
+                            KeyCode::Esc => app.exit_search_mode(),
+                            KeyCode::Right | KeyCode::Enter => app.start_editing(),
+                            KeyCode::Down => app.select_next(),
+                            KeyCode::Up => app.select_previous(),
+                            KeyCode::Left => app.navigate_up_directory(),
+                            KeyCode::Char('d') => app.start_delete_confirmation(),
+                            KeyCode::Char('m') => app.start_move_selection(),
+                            KeyCode::Char('r') => app.start_rename(),
+                            KeyCode::Char('/') => {
+                                // Go back to input mode to modify search
+                                app.search_input_mode = true;
+                            }
+                            _ => {}
+                        }
                     }
-                    KeyCode::Backspace => {
-                        app.search_input.pop();
-                        app.update_filtered_files();
-                    }
-                    _ => {}
                 },
                 Mode::ConfirmingDelete => match key.code {
                     KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => app.confirm_delete(),

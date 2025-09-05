@@ -1,15 +1,23 @@
-use std::{fs, path::PathBuf};
+use std::{fs, path::PathBuf, time::{SystemTime, UNIX_EPOCH}};
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, BorderType};
 use tui_textarea::TextArea;
 use fuzzy_matcher::FuzzyMatcher;
 
 use crate::app::App;
+use crate::clipboard;
 use crate::modes::Mode;
 use crate::ui::themes::ColorScheme;
 use crate::file_ops::{load_files, load_browser_entries, load_template_files};
 
 impl<'a> App<'a> {
+    pub fn update_timing(&mut self) {
+        self.last_update_time = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+    }
+
     pub fn load_files(&mut self) {
         self.files = load_files(&self.root);
     }
@@ -155,7 +163,7 @@ impl<'a> App<'a> {
                     let content = fs::read_to_string(&path).unwrap_or_default();
                     let lines: Vec<String> = content.lines().map(String::from).collect();
                     let mut editor = TextArea::new(lines);
-                    let block_style = Style::default().fg(Color::Green);
+                    let block_style = Style::default().fg(self.color_scheme.primary_color());
                     editor.set_block(
                         Block::default()
                             .title(" Editor (Press Esc to Save) ")
@@ -163,7 +171,7 @@ impl<'a> App<'a> {
                             .border_style(block_style)
                             .border_type(BorderType::Double),
                     );
-                    editor.set_style(Style::default().fg(Color::Green).bg(Color::Black));
+                    editor.set_style(Style::default().fg(self.color_scheme.primary_color()).bg(Color::Black));
                     self.editor = Some(editor);
                     self.editing_file_path = Some(path.clone());
                     self.mode = Mode::Editing;
@@ -188,16 +196,28 @@ impl<'a> App<'a> {
 
     pub fn enter_search_mode(&mut self) {
         self.mode = Mode::Search;
+        self.search_input_mode = true;
         self.search_input.clear();
         self.update_filtered_files();
     }
 
     pub fn exit_search_mode(&mut self) {
         self.mode = Mode::Normal;
+        self.search_input_mode = true;
         self.search_input.clear();
         self.filtered_files.clear();
         if !self.files.is_empty() {
             self.file_list_state.select(Some(0));
+        }
+    }
+    
+    pub fn toggle_search_mode(&mut self) {
+        if self.mode == Mode::Search {
+            self.search_input_mode = !self.search_input_mode;
+            if !self.search_input_mode {
+                // Switched to navigation mode - update filtered results
+                self.update_filtered_files();
+            }
         }
     }
 
@@ -388,6 +408,72 @@ impl<'a> App<'a> {
                 self.color_scheme = *scheme;
                 self.save_config();
             }
+        }
+    }
+
+    pub fn start_rename(&mut self) {
+        if let Some(selected_index) = self.file_list_state.selected() {
+            let current_files = self.get_current_files();
+            if let Some(path) = current_files.get(selected_index).cloned() {
+                if path.is_file() {
+                    // Store the file to rename
+                    self.operation_target_file = Some(path.clone());
+                    
+                    // Pre-fill input with current filename (without extension)
+                    if let Some(filename) = path.file_stem() {
+                        self.filename_input = filename.to_string_lossy().to_string();
+                    }
+                    
+                    self.mode = Mode::Renaming;
+                }
+            }
+        }
+    }
+
+    pub fn execute_rename(&mut self) {
+        if let Some(old_path) = self.operation_target_file.take() {
+            let new_filename = if self.filename_input.ends_with(".md") {
+                self.filename_input.clone()
+            } else {
+                format!("{}.md", self.filename_input)
+            };
+            
+            let new_path = self.root.join(new_filename);
+            
+            // Only rename if the new path is different and doesn't already exist
+            if new_path != old_path && !new_path.exists() {
+                if fs::rename(&old_path, &new_path).is_ok() {
+                    self.load_files();
+                    
+                    // Try to select the renamed file
+                    if let Some(index) = self.files.iter().position(|f| f == &new_path) {
+                        self.file_list_state.select(Some(index));
+                    }
+                    
+                    // Update filtered files if in search mode  
+                    if !self.search_input.is_empty() {
+                        self.update_filtered_files();
+                    }
+                }
+            }
+        }
+        
+        // Clean up and return to normal mode
+        self.filename_input.clear();
+        self.operation_target_file = None;
+        self.mode = Mode::Normal;
+    }
+
+    pub fn cancel_rename(&mut self) {
+        self.filename_input.clear();
+        self.operation_target_file = None;
+        self.mode = Mode::Normal;
+    }
+
+    pub fn copy_file_to_clipboard(&self) {
+        if let Some(editor) = &self.editor {
+            let content = editor.lines().join("\n");
+            let _ = clipboard::copy_markdown_to_clipboard(&content);
         }
     }
 }
