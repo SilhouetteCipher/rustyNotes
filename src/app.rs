@@ -29,6 +29,7 @@ pub struct App<'a> {
     pub editing_file_path: Option<PathBuf>,
     pub operation_target_file: Option<PathBuf>,
     pub move_destinations: Vec<String>,
+    pub workflow_folders: Vec<PathBuf>,
     pub move_selection_state: ListState,
     pub color_scheme: ColorScheme,
     pub settings_selection_state: ListState,
@@ -39,7 +40,7 @@ pub struct App<'a> {
 
 impl<'a> App<'a> {
     pub fn new() -> Self {
-        let (root, template_root, color_scheme) = config::load_config();
+        let (root, template_root, color_scheme, workflow_folders) = config::load_config();
         let current_time = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
@@ -66,6 +67,7 @@ impl<'a> App<'a> {
             editing_file_path: None,
             operation_target_file: None,
             move_destinations: DEFAULT_MOVE_DESTINATIONS.iter().map(|s| s.to_string()).collect(),
+            workflow_folders,
             move_selection_state: ListState::default(),
             color_scheme,
             settings_selection_state: ListState::default(),
@@ -81,7 +83,7 @@ impl<'a> App<'a> {
     }
 
     pub fn save_config(&self) {
-        config::save_config(&self.root, &self.template_root, &self.color_scheme);
+        config::save_config(&self.root, &self.template_root, &self.color_scheme, &self.workflow_folders);
     }
 
     pub fn get_current_files(&self) -> &Vec<PathBuf> {

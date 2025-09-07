@@ -340,8 +340,7 @@ impl<'a> App<'a> {
 
     pub fn execute_move(&mut self) {
         if let (Some(path), Some(dest_index)) = (self.operation_target_file.take(), self.move_selection_state.selected()) {
-            if let Some(dest_folder) = self.move_destinations.get(dest_index) {
-                let dest_path = self.root.join(dest_folder);
+            if let Some(dest_path) = self.workflow_folders.get(dest_index) {
                 if let Some(filename) = path.file_name() {
                     let new_path = dest_path.join(filename);
                     fs::create_dir_all(&dest_path).ok();
